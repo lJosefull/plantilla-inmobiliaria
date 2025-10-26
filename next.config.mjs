@@ -9,6 +9,18 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  output: 'standalone',
+  productionBrowserSourceMaps: false,
+  compiler: {
+    removeConsole: {
+      production: true,
+    },
+  },
+  modularizeImports: {
+    'lucide-react': {
+      transform: 'lucide-react/icons/{{member}}',
+    },
+  },
 }
 
 export default nextConfig

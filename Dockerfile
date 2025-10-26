@@ -1,27 +1,32 @@
-# Multi-stage Dockerfile para Next.js (producción)
+# syntax=docker/dockerfile:1.4
+# Multi-stage Dockerfile para Next.js (producción) con Bun en build
 
-# Etapa de build: instala dependencias (incluye dev) y compila
-FROM node:20-alpine AS builder
+# Etapa de build: instala dependencias con Bun y compila
+FROM oven/bun:1-alpine AS builder
 WORKDIR /app
-
-# Mejor compatibilidad en Alpine
-RUN apk add --no-cache libc6-compat
-
-# Habilitar Corepack para usar pnpm
-RUN corepack enable
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# Instalar dependencias con cache eficiente
+# Instalar dependencias con cache eficiente usando Bun
 COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
+RUN --mount=type=cache,target=/root/.bun bun install
 
-# Copiar el resto del código y construir
-COPY . .
-RUN pnpm build
+# Copiar solo lo necesario para reducir el contexto y mejorar cache
+COPY app ./app
+COPY components ./components
+COPY lib ./lib
+COPY public ./public
+COPY styles ./styles
+COPY next.config.mjs ./next.config.mjs
+COPY tsconfig.json ./tsconfig.json
+COPY postcss.config.mjs ./postcss.config.mjs
+COPY components.json ./components.json
 
-# Etapa de runtime: solo dependencias de producción + artefactos
+# Cache del build de Next para compilaciones repetidas; corre scripts con Bun
+RUN --mount=type=cache,target=/app/.next/cache bun run build
+
+# Etapa de runtime: Node (máxima compatibilidad) + artefactos standalone
 FROM node:20-alpine AS runner
 WORKDIR /app
 
@@ -32,16 +37,12 @@ RUN apk add --no-cache libc6-compat \
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# Instalar solo dependencias de producción
-COPY package.json pnpm-lock.yaml ./
-RUN corepack enable \
-  && pnpm install --frozen-lockfile --prod
-
-# Copiar artefactos de build y estáticos
-COPY --from=builder /app/.next ./.next
+# Copiar build standalone y estáticos
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
 
 EXPOSE 3000
 USER nextjs
 
-CMD ["pnpm", "start"]
+CMD ["node", "server.js"]
