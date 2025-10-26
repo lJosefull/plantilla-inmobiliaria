@@ -1,16 +1,21 @@
-# syntax=docker/dockerfile:1.4
-# Multi-stage Dockerfile para Next.js (producción) con Bun en build
+# syntax=docker/dockerfile:1.6
+# Multi-stage Dockerfile para Next.js (producción) usando PNPM con cachés
 
-# Etapa de build: instala dependencias con Bun y compila
-FROM oven/bun:1-alpine AS builder
+# Etapa de build: instala dependencias con PNPM y compila
+FROM node:20-bookworm-slim AS builder
 WORKDIR /app
 
-ENV NODE_ENV=production
+# Habilitar Corepack para usar pnpm
+RUN corepack enable
+
+# En build necesitamos devDependencies para PostCSS/Tailwind
+ENV NODE_ENV=development
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# Instalar dependencias con cache eficiente usando Bun
+# Instalar dependencias con cache eficiente
 COPY package.json pnpm-lock.yaml ./
-RUN --mount=type=cache,target=/root/.bun bun install
+RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm pnpm fetch
+RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm pnpm install --frozen-lockfile --prefer-offline
 
 # Copiar solo lo necesario para reducir el contexto y mejorar cache
 COPY app ./app
@@ -23,26 +28,25 @@ COPY tsconfig.json ./tsconfig.json
 COPY postcss.config.mjs ./postcss.config.mjs
 COPY components.json ./components.json
 
-# Cache del build de Next para compilaciones repetidas; corre scripts con Bun
-RUN --mount=type=cache,target=/app/.next/cache bun run build
+# Cache del build de Next para compilaciones repetidas
+ARG TURBO=0
+RUN --mount=type=cache,id=next-cache,target=/app/.next/cache \
+    sh -lc 'if [ "$TURBO" = "1" ]; then pnpm run build:turbo; else pnpm run build; fi'
 
-# Etapa de runtime: Node (máxima compatibilidad) + artefactos standalone
-FROM node:20-alpine AS runner
+# Etapa de runtime: Node + artefactos standalone
+FROM node:20-bookworm-slim AS runner
 WORKDIR /app
-
-RUN apk add --no-cache libc6-compat \
-  && addgroup -g 1001 -S nodejs \
-  && adduser -S -u 1001 nextjs
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3001
 
 # Copiar build standalone y estáticos
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
 
-EXPOSE 3000
-USER nextjs
+EXPOSE 3001
+USER node
 
 CMD ["node", "server.js"]

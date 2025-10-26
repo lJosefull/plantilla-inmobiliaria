@@ -1,0 +1,18 @@
+# syntax=docker/dockerfile:1.6
+# Runtime image only: expects Next build artifacts present in context
+FROM node:20-bookworm-slim AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3001
+
+# Copy prebuilt Next standalone artifacts
+COPY .next/standalone ./
+COPY .next/static ./.next/static
+COPY public ./public
+
+EXPOSE 3001
+USER node
+
+CMD ["node", "server.js"]

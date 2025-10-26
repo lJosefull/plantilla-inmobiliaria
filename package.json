@@ -2,9 +2,13 @@
   "name": "my-v0-project",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@9.0.0",
   "scripts": {
     "build": "next build",
+    "build:turbo": "next build --turbo",
+    "build:mem": "NODE_OPTIONS=--max-old-space-size=4096 next build",
     "dev": "next dev",
+    "dev:turbo": "next dev --turbo",
     "lint": "eslint .",
     "start": "next start"
   },

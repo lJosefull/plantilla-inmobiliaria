@@ -1,3 +1,4 @@
+import path from 'node:path'
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   eslint: {
@@ -16,10 +17,13 @@ const nextConfig = {
       production: true,
     },
   },
-  modularizeImports: {
-    'lucide-react': {
-      transform: 'lucide-react/icons/{{member}}',
-    },
+  webpack: (config) => {
+    const projectRoot = process.cwd()
+    config.resolve.alias = {
+      ...(config.resolve.alias || {}),
+      '@': path.resolve(projectRoot),
+    }
+    return config
   },
 }
 
